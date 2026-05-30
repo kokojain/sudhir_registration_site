@@ -38,6 +38,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   const [lastScans, setLastScans] = useState<ScanResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
   const [stats, setStats] = useState<StaffStats | null>(initialStats);
   const [cameraOptions, setCameraOptions] = useState<CameraOption[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState("");
@@ -66,79 +67,91 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   }
 
   async function startScanner() {
-    if (busy || isRunning) return;
+    if (busy || isRunning || isStartingCamera) return;
+    setIsStartingCamera(true);
     const { Html5Qrcode: QrScanner } = await import("html5-qrcode");
-    if (scannerRef.current) {
-      await stopScanner(false);
-    }
-    const scanner = new QrScanner("reader");
-    scannerRef.current = scanner;
-    const config = {
-      fps: 10,
-      qrbox: { width: 250, height: 250 },
-      rememberLastUsedCamera: true,
-    };
-
-    let candidates: Array<string | { facingMode: "environment" | "user" }> = [
-      { facingMode: "environment" },
-      { facingMode: "user" },
-    ];
-
     try {
-      const cameras = await QrScanner.getCameras();
-      if (cameras?.length) {
-        const rearCamera = cameras.find((camera) =>
-          /back|rear|environment/i.test(camera.label || ""),
-        );
-        const frontCamera = cameras.find((camera) =>
-          /front|user|facetime/i.test(camera.label || ""),
-        );
-        const ordered = [
-          selectedCameraId,
-          rearCamera?.id || "",
-          frontCamera?.id || "",
-          cameras[0].id,
-        ].filter(Boolean) as string[];
-        const uniqueOrdered = [...new Set(ordered)];
-        candidates = [...uniqueOrdered, ...candidates];
-        const options = cameras.map((camera, index) => ({
-          id: camera.id,
-          label: camera.label?.trim() || `Camera ${index + 1}`,
-        }));
-        setCameraOptions(options);
+      if (scannerRef.current) {
+        await stopScanner(false);
       }
-    } catch {
-      // Keep fallback candidates.
-    }
+      const scanner = new QrScanner("reader");
+      scannerRef.current = scanner;
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        rememberLastUsedCamera: true,
+      };
 
-    for (const candidate of candidates) {
+      await requestCameraPermissionPreflight();
+
+      let candidates: Array<string | { facingMode: "environment" | "user" }> = [
+        { facingMode: "environment" },
+        { facingMode: "user" },
+      ];
+
       try {
-        await scanner.start(
-          candidate,
-          config,
-          (decodedText) => {
-            if (busy) return;
-            setBusy(true);
-            void stopScanner(false).then(() => submitScan(decodedText));
-          },
-          () => {},
-        );
-        setIsRunning(true);
-        return;
+        const cameras = await QrScanner.getCameras();
+        if (cameras?.length) {
+          const rearCamera = cameras.find((camera) =>
+            /back|rear|environment/i.test(camera.label || ""),
+          );
+          const frontCamera = cameras.find((camera) =>
+            /front|user|facetime/i.test(camera.label || ""),
+          );
+          const ordered = [
+            selectedCameraId,
+            rearCamera?.id || "",
+            frontCamera?.id || "",
+            cameras[0].id,
+          ].filter(Boolean) as string[];
+          const uniqueOrdered = [...new Set(ordered)];
+          candidates = [...uniqueOrdered, ...candidates];
+          const options = cameras.map((camera, index) => ({
+            id: camera.id,
+            label: camera.label?.trim() || `Camera ${index + 1}`,
+          }));
+          setCameraOptions(options);
+        }
       } catch {
-        // Try next candidate.
+        // Keep fallback candidates.
       }
-    }
 
-    setResult({
-      status: "ERROR",
-      message:
-        "Camera could not start. Allow camera permission, select a specific camera, and retry.",
-      delegateId: "",
-      name: "",
-      category: "",
-      timestamp: new Date().toISOString(),
-    });
+      for (const candidate of candidates) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            await withTimeout(
+              scanner.start(
+                candidate,
+                config,
+                (decodedText) => {
+                  if (busy) return;
+                  setBusy(true);
+                  void stopScanner(false).then(() => submitScan(decodedText));
+                },
+                () => {},
+              ),
+              10000,
+            );
+            setIsRunning(true);
+            return;
+          } catch {
+            await sleep(250);
+          }
+        }
+      }
+
+      setResult({
+        status: "ERROR",
+        message:
+          "Camera could not start reliably. Allow camera permission in Safari settings, pick front/rear explicitly, then retry.",
+        delegateId: "",
+        name: "",
+        category: "",
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      setIsStartingCamera(false);
+    }
   }
 
   async function stopScanner(resetBusy = true) {
@@ -203,6 +216,40 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   async function startWithSelectedCamera() {
     await stopScanner(false);
     await startScanner();
+  }
+
+  async function requestCameraPermissionPreflight() {
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+    } catch {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+  }
+
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Camera startup timed out.")), timeoutMs);
+      promise
+        .then((value) => {
+          clearTimeout(timer);
+          resolve(value);
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+    });
   }
 
   const resultClass = useMemo(() => {
