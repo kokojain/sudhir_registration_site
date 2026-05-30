@@ -390,10 +390,11 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
 
         <div
           id="reader"
-          className="mt-3 flex min-h-72 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
-        >
-          {isRunning ? "Scanner active..." : "Camera scanner appears here."}
-        </div>
+          className="mt-3 min-h-72 overflow-hidden rounded-lg border-2 border-dashed border-slate-300 bg-slate-50"
+        />
+        <p className="mt-2 text-sm text-slate-500">
+          {isRunning ? "Scanner active. Point camera at QR." : "Camera preview appears above after Start camera."}
+        </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -441,6 +442,8 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
           accept="image/*"
           capture="environment"
           className="hidden"
+          aria-label="Upload QR photo"
+          title="Upload QR photo"
           onChange={(event) => void onPhotoSelected(event)}
         />
 
