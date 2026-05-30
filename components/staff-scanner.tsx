@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Html5Qrcode } from "html5-qrcode";
 import type { ScanResult } from "@/lib/types";
 
@@ -34,6 +34,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const scanLockRef = useRef(false);
+  const scanPulseTimeoutRef = useRef<number | null>(null);
   const [operatorName, setOperatorName] = useState("");
   const [manualId, setManualId] = useState("");
   const [result, setResult] = useState<ScanResult>(INITIAL_RESULT);
@@ -44,6 +45,15 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   const [stats, setStats] = useState<StaffStats | null>(initialStats);
   const [cameraOptions, setCameraOptions] = useState<CameraOption[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState("");
+  const [showScanPulse, setShowScanPulse] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (scanPulseTimeoutRef.current) {
+        window.clearTimeout(scanPulseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   async function refreshStats() {
     const response = await fetch(`/api/staff/stats/${stationToken}`);
@@ -71,15 +81,17 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   async function startScanner() {
     if (busy || isRunning || isStartingCamera) return;
     setIsStartingCamera(true);
-    const { Html5Qrcode: QrScanner } = await import("html5-qrcode");
+    const { Html5Qrcode: QrScanner, Html5QrcodeSupportedFormats } = await import("html5-qrcode");
     try {
       if (scannerRef.current) {
         await stopScanner(false);
       }
       const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
+        fps: 18,
+        qrbox: { width: 220, height: 220 },
         rememberLastUsedCamera: true,
+        disableFlip: true,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
       };
 
       await requestCameraPermissionPreflight();
@@ -130,6 +142,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
                 (decodedText) => {
                   if (busy || scanLockRef.current) return;
                   scanLockRef.current = true;
+                  triggerInstantScanFeedback(decodedText);
                   setBusy(true);
                   void submitScan(decodedText).finally(() => {
                     scanLockRef.current = false;
@@ -198,6 +211,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
     const payload = (await response.json()) as ScanResult | { error?: string };
 
     if (!response.ok) {
+      setShowScanPulse(false);
       setResult({
         status: "ERROR",
         message: (payload as { error?: string }).error ?? "Scan request failed.",
@@ -211,6 +225,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
     }
 
     const scanResult = payload as ScanResult;
+    setShowScanPulse(false);
     setResult(scanResult);
     setLastScans((prev) => [scanResult, ...prev].slice(0, 12));
     setBusy(false);
@@ -303,6 +318,30 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
 
   function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function triggerInstantScanFeedback(decodedText: string) {
+    setShowScanPulse(true);
+    setResult({
+      status: "ALLOWED",
+      message: "SCANNED - checking eligibility...",
+      delegateId: decodedText,
+      name: "",
+      category: "",
+      timestamp: new Date().toISOString(),
+    });
+
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(120);
+    }
+
+    if (scanPulseTimeoutRef.current) {
+      window.clearTimeout(scanPulseTimeoutRef.current);
+    }
+    scanPulseTimeoutRef.current = window.setTimeout(() => {
+      setShowScanPulse(false);
+      scanPulseTimeoutRef.current = null;
+    }, 900);
   }
 
   function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -468,7 +507,12 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
           {isRunning ? "Scanner active. Point camera at QR." : "Camera preview appears above after Start camera."}
         </p>
 
-        <div className={`mt-3 rounded-xl border p-6 shadow-sm ${resultClass}`}>
+        {showScanPulse ? (
+          <p className="mt-3 rounded-md border border-emerald-300 bg-emerald-100 px-3 py-2 text-sm font-bold text-emerald-800">
+            SCANNED - checking...
+          </p>
+        ) : null}
+        <div className={`mt-3 rounded-xl border p-6 shadow-sm ${resultClass} ${showScanPulse ? "ring-2 ring-emerald-400" : ""}`}>
           <p className="text-3xl font-black text-slate-900">{result.status}</p>
           <p className="mt-2 text-lg font-semibold text-slate-900">{result.message}</p>
           <p className="mt-2 text-sm text-slate-700">
