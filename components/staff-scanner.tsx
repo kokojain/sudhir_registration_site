@@ -282,11 +282,12 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
-        audio: false,
+        audio: true,
       });
     } catch {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     } finally {
+      await sleep(200);
       stream?.getTracks().forEach((track) => track.stop());
     }
   }
@@ -320,6 +321,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
       if (scannerRegion instanceof HTMLElement) {
         scannerRegion.style.width = "100%";
         scannerRegion.style.height = "100%";
+        scannerRegion.style.minHeight = "18rem";
       }
 
       const video = container.querySelector("video");
@@ -334,6 +336,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
       video.setAttribute("webkit-playsinline", "true");
       video.style.width = "100%";
       video.style.height = "100%";
+      video.style.minHeight = "18rem";
       video.style.objectFit = "cover";
 
       try {
@@ -431,7 +434,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
 
         <div
           id="reader"
-          className="mt-3 min-h-72 overflow-hidden rounded-lg border-2 border-dashed border-slate-300 bg-slate-50"
+          className="mt-3 h-72 overflow-hidden rounded-lg border-2 border-dashed border-slate-300 bg-slate-50"
         />
         <p className="mt-2 text-sm text-slate-500">
           {isRunning ? "Scanner active. Point camera at QR." : "Camera preview appears above after Start camera."}
