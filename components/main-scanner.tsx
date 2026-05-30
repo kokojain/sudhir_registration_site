@@ -39,6 +39,7 @@ const INITIAL_RESULT: ScanResult = {
 export function MainScanner() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const scanLockRef = useRef(false);
   const [stations, setStations] = useState<Station[]>([]);
   const [datasetName, setDatasetName] = useState("");
   const [selectedToken, setSelectedToken] = useState("");
@@ -200,9 +201,12 @@ export function MainScanner() {
                 candidate,
                 config,
                 (decodedText) => {
-                  if (busy) return;
+                  if (busy || scanLockRef.current) return;
+                  scanLockRef.current = true;
                   setBusy(true);
-                  void stopScanner(false).then(() => submitScan(decodedText));
+                  void submitScan(decodedText).finally(() => {
+                    scanLockRef.current = false;
+                  });
                 },
                 () => {},
               ),

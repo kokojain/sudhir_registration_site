@@ -33,6 +33,7 @@ const INITIAL_RESULT: ScanResult = {
 export function StaffScanner({ stationToken, stationLabel, initialStats }: StaffScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const scanLockRef = useRef(false);
   const [operatorName, setOperatorName] = useState("");
   const [manualId, setManualId] = useState("");
   const [result, setResult] = useState<ScanResult>(INITIAL_RESULT);
@@ -127,9 +128,12 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
                 candidate,
                 config,
                 (decodedText) => {
-                  if (busy) return;
+                  if (busy || scanLockRef.current) return;
+                  scanLockRef.current = true;
                   setBusy(true);
-                  void stopScanner(false).then(() => submitScan(decodedText));
+                  void submitScan(decodedText).finally(() => {
+                    scanLockRef.current = false;
+                  });
                 },
                 () => {},
               ),
