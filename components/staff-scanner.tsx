@@ -468,6 +468,18 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
           {isRunning ? "Scanner active. Point camera at QR." : "Camera preview appears above after Start camera."}
         </p>
 
+        <div className={`mt-3 rounded-xl border p-6 shadow-sm ${resultClass}`}>
+          <p className="text-3xl font-black text-slate-900">{result.status}</p>
+          <p className="mt-2 text-lg font-semibold text-slate-900">{result.message}</p>
+          <p className="mt-2 text-sm text-slate-700">
+            {result.name ? `${result.name} · ` : ""}
+            {result.delegateId}
+          </p>
+          <p className="text-xs text-slate-500">
+            {result.timestamp ? new Date(result.timestamp).toLocaleString() : ""}
+          </p>
+        </div>
+
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
@@ -544,18 +556,6 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
       </section>
 
       <section className="space-y-4">
-        <div className={`rounded-xl border p-6 shadow-sm ${resultClass}`}>
-          <p className="text-3xl font-black text-slate-900">{result.status}</p>
-          <p className="mt-2 text-lg font-semibold text-slate-900">{result.message}</p>
-          <p className="mt-2 text-sm text-slate-700">
-            {result.name ? `${result.name} · ` : ""}
-            {result.delegateId}
-          </p>
-          <p className="text-xs text-slate-500">
-            {result.timestamp ? new Date(result.timestamp).toLocaleString() : ""}
-          </p>
-        </div>
-
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">Station Stats</h3>
           {stats ? (

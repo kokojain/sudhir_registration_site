@@ -435,30 +435,14 @@ export function MainScanner() {
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Registration Scanner Cloud</h1>
-            <p className="mt-2 text-slate-600">
-              Select a station and scan delegates from one screen.
-            </p>
-            {datasetName ? (
-              <p className="mt-1 text-xs text-slate-500">Active dataset: {datasetName}</p>
-            ) : null}
-          </div>
-          <div className="flex gap-2">
-            <a
-              href="/admin"
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              /admin
-            </a>
-            <a
-              href="/admin/dashboard"
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              /admin/dashboard
-            </a>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Registration Scanner Cloud</h1>
+          <p className="mt-2 text-slate-600">
+            Select a station and scan delegates from one screen.
+          </p>
+          {datasetName ? (
+            <p className="mt-1 text-xs text-slate-500">Active dataset: {datasetName}</p>
+          ) : null}
         </div>
         {message ? (
           <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -558,6 +542,18 @@ export function MainScanner() {
             {isRunning ? "Scanner active. Point camera at QR." : "Camera preview appears above after Start camera."}
           </p>
 
+          <div className={`mt-3 rounded-xl border p-6 shadow-sm ${resultClass}`}>
+            <p className="text-3xl font-black text-slate-900">{result.status}</p>
+            <p className="mt-2 text-lg font-semibold text-slate-900">{result.message}</p>
+            <p className="mt-2 text-sm text-slate-700">
+              {result.name ? `${result.name} · ` : ""}
+              {result.delegateId}
+            </p>
+            <p className="text-xs text-slate-500">
+              {result.timestamp ? new Date(result.timestamp).toLocaleString() : ""}
+            </p>
+          </div>
+
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -634,18 +630,6 @@ export function MainScanner() {
         </section>
 
         <section className="space-y-4">
-          <div className={`rounded-xl border p-6 shadow-sm ${resultClass}`}>
-            <p className="text-3xl font-black text-slate-900">{result.status}</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{result.message}</p>
-            <p className="mt-2 text-sm text-slate-700">
-              {result.name ? `${result.name} · ` : ""}
-              {result.delegateId}
-            </p>
-            <p className="text-xs text-slate-500">
-              {result.timestamp ? new Date(result.timestamp).toLocaleString() : ""}
-            </p>
-          </div>
-
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Station Stats</h3>
             {stats ? (
