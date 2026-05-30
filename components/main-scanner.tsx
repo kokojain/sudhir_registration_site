@@ -22,6 +22,11 @@ type StationStats = {
   usedAtStation: number;
 };
 
+type CameraOption = {
+  id: string;
+  label: string;
+};
+
 const INITIAL_RESULT: ScanResult = {
   status: "ALLOWED",
   message: "Ready to scan.",
@@ -44,6 +49,8 @@ export function MainScanner() {
   const [isRunning, setIsRunning] = useState(false);
   const [stats, setStats] = useState<StationStats | null>(null);
   const [message, setMessage] = useState("");
+  const [cameraOptions, setCameraOptions] = useState<CameraOption[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState("");
 
   const selectedStation = useMemo(
     () => stations.find((station) => station.station_token === selectedToken) ?? null,
@@ -70,10 +77,27 @@ export function MainScanner() {
 
   useEffect(() => {
     void loadStations();
+    void loadCameraOptions();
     return () => {
       void stopScanner();
     };
   }, [stopScanner]);
+
+  async function loadCameraOptions() {
+    try {
+      const { Html5Qrcode: QrScanner } = await import("html5-qrcode");
+      const cameras = await QrScanner.getCameras();
+      const options = cameras.map((camera, index) => ({
+        id: camera.id,
+        label: camera.label?.trim() || `Camera ${index + 1}`,
+      }));
+      setCameraOptions(options);
+      setSelectedCameraId((current) => current || options[0]?.id || "");
+    } catch {
+      setCameraOptions([]);
+      setSelectedCameraId("");
+    }
+  }
 
   async function loadStations() {
     const response = await fetch("/api/staff/stations");
@@ -113,6 +137,9 @@ export function MainScanner() {
     }
     if (busy || isRunning) return;
     const { Html5Qrcode: QrScanner } = await import("html5-qrcode");
+    if (scannerRef.current) {
+      await stopScanner(false);
+    }
     const scanner = new QrScanner("main-reader");
     scannerRef.current = scanner;
     const config = {
@@ -128,7 +155,30 @@ export function MainScanner() {
 
     try {
       const cameras = await QrScanner.getCameras();
-      if (cameras?.length) candidates = [cameras[0].id, ...candidates];
+      if (cameras?.length) {
+        const rearCamera = cameras.find((camera) =>
+          /back|rear|environment/i.test(camera.label || ""),
+        );
+        const frontCamera = cameras.find((camera) =>
+          /front|user|facetime/i.test(camera.label || ""),
+        );
+
+        const ordered = [
+          selectedCameraId,
+          rearCamera?.id || "",
+          frontCamera?.id || "",
+          cameras[0].id,
+        ].filter(Boolean) as string[];
+
+        const uniqueOrdered = [...new Set(ordered)];
+        candidates = [...uniqueOrdered, ...candidates];
+
+        const options = cameras.map((camera, index) => ({
+          id: camera.id,
+          label: camera.label?.trim() || `Camera ${index + 1}`,
+        }));
+        setCameraOptions(options);
+      }
     } catch {
       // Keep fallback candidates.
     }
@@ -154,7 +204,8 @@ export function MainScanner() {
 
     setResult({
       status: "ERROR",
-      message: "Camera could not start. Allow camera for this site and retry.",
+      message:
+        "Camera could not start. Allow camera permission, select a specific camera, and retry.",
       delegateId: "",
       name: "",
       category: "",
@@ -199,6 +250,11 @@ export function MainScanner() {
     setBusy(true);
     void stopScanner(false).then(() => submitScan(manualId.trim()));
     setManualId("");
+  }
+
+  async function startWithSelectedCamera() {
+    await stopScanner(false);
+    await startScanner();
   }
 
   const resultClass = useMemo(() => {
@@ -269,6 +325,57 @@ export function MainScanner() {
           </label>
 
           <label className="mt-4 block text-sm font-medium text-slate-700">
+            Camera
+            <select
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              value={selectedCameraId}
+              onChange={(event) => setSelectedCameraId(event.target.value)}
+            >
+              {!cameraOptions.length ? (
+                <option value="">Auto (front/back fallback)</option>
+              ) : null}
+              {cameraOptions.map((camera) => (
+                <option key={camera.id} value={camera.id}>
+                  {camera.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void loadCameraOptions()}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50"
+            >
+              Refresh cameras
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const rear = cameraOptions.find((camera) =>
+                  /back|rear|environment/i.test(camera.label),
+                );
+                if (rear) setSelectedCameraId(rear.id);
+              }}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50"
+            >
+              Use rear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const front = cameraOptions.find((camera) =>
+                  /front|user|facetime/i.test(camera.label),
+                );
+                if (front) setSelectedCameraId(front.id);
+              }}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50"
+            >
+              Use front
+            </button>
+          </div>
+
+          <label className="mt-4 block text-sm font-medium text-slate-700">
             Operator name
             <input
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
@@ -288,7 +395,7 @@ export function MainScanner() {
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => void startScanner()}
+              onClick={() => void startWithSelectedCamera()}
               className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
             >
               Start camera
@@ -304,7 +411,7 @@ export function MainScanner() {
               type="button"
               onClick={() => {
                 setBusy(false);
-                void startScanner();
+                void startWithSelectedCamera();
               }}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
             >
