@@ -60,22 +60,23 @@ export function MainScanner() {
   );
 
   const stopScanner = useCallback(async (resetBusy = true) => {
-    if (!scannerRef.current || !isRunning) {
+    if (!scannerRef.current) {
       if (resetBusy) setBusy(false);
       setIsRunning(false);
       return;
     }
 
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
     try {
-      await scannerRef.current.stop();
-      await scannerRef.current.clear();
+      await disposeScanner(scanner);
     } catch {
       // Ignore cleanup errors.
     } finally {
       setIsRunning(false);
       if (resetBusy) setBusy(false);
     }
-  }, [isRunning]);
+  }, []);
 
   useEffect(() => {
     void loadStations();
@@ -144,8 +145,6 @@ export function MainScanner() {
       if (scannerRef.current) {
         await stopScanner(false);
       }
-      const scanner = new QrScanner("main-reader");
-      scannerRef.current = scanner;
       const config = {
         fps: 10,
         qrbox: { width: 250, height: 250 },
@@ -188,9 +187,13 @@ export function MainScanner() {
       }
 
       let lastError: unknown = null;
-      for (const candidate of candidates) {
+      const maxCandidates = isIOS() ? 2 : candidates.length;
+      const candidatesToTry = candidates.slice(0, maxCandidates);
+      for (const candidate of candidatesToTry) {
         // Retry once per candidate to handle transient iOS camera init failures.
         for (let attempt = 0; attempt < 2; attempt += 1) {
+          const scanner = new QrScanner("main-reader");
+          scannerRef.current = scanner;
           try {
             await withTimeout(
               scanner.start(
@@ -210,6 +213,8 @@ export function MainScanner() {
             return;
           } catch (error) {
             lastError = error;
+            await disposeScanner(scanner);
+            if (scannerRef.current === scanner) scannerRef.current = null;
             await sleep(250);
           }
         }
@@ -225,7 +230,7 @@ export function MainScanner() {
         timestamp: new Date().toISOString(),
       });
       if (lastError) {
-        setMessage("Camera startup failed. Try Refresh cameras, then select rear/front and start again.");
+        setMessage("Camera startup failed after retries. Use Refresh cameras, choose one camera, then tap Start camera once.");
       }
     } finally {
       setIsStartingCamera(false);
@@ -397,6 +402,20 @@ export function MainScanner() {
     await applyPreviewFixes();
     await sleep(250);
     await applyPreviewFixes();
+  }
+
+  async function disposeScanner(scanner: Html5Qrcode | null) {
+    if (!scanner) return;
+    try {
+      await scanner.stop();
+    } catch {
+      // Ignore stop errors for partially initialized scanners.
+    }
+    try {
+      await scanner.clear();
+    } catch {
+      // Ignore clear errors.
+    }
   }
 
   const resultClass = useMemo(() => {

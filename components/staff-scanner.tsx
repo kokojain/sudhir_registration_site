@@ -75,8 +75,6 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
       if (scannerRef.current) {
         await stopScanner(false);
       }
-      const scanner = new QrScanner("reader");
-      scannerRef.current = scanner;
       const config = {
         fps: 10,
         qrbox: { width: 250, height: 250 },
@@ -117,8 +115,12 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
         // Keep fallback candidates.
       }
 
-      for (const candidate of candidates) {
+      const maxCandidates = isIOS() ? 2 : candidates.length;
+      const candidatesToTry = candidates.slice(0, maxCandidates);
+      for (const candidate of candidatesToTry) {
         for (let attempt = 0; attempt < 2; attempt += 1) {
+          const scanner = new QrScanner("reader");
+          scannerRef.current = scanner;
           try {
             await withTimeout(
               scanner.start(
@@ -137,6 +139,8 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
             await ensurePreviewVisible("reader");
             return;
           } catch {
+            await disposeScanner(scanner);
+            if (scannerRef.current === scanner) scannerRef.current = null;
             await sleep(250);
           }
         }
@@ -157,15 +161,16 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
   }
 
   async function stopScanner(resetBusy = true) {
-    if (!scannerRef.current || !isRunning) {
+    if (!scannerRef.current) {
       if (resetBusy) setBusy(false);
       setIsRunning(false);
       return;
     }
 
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
     try {
-      await scannerRef.current.stop();
-      await scannerRef.current.clear();
+      await disposeScanner(scanner);
     } catch {
       // Ignore close errors.
     } finally {
@@ -351,6 +356,25 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
     await applyPreviewFixes();
     await sleep(250);
     await applyPreviewFixes();
+  }
+
+  async function disposeScanner(scanner: Html5Qrcode | null) {
+    if (!scanner) return;
+    try {
+      await scanner.stop();
+    } catch {
+      // Ignore stop errors for partially initialized scanners.
+    }
+    try {
+      await scanner.clear();
+    } catch {
+      // Ignore clear errors.
+    }
+  }
+
+  function isIOS() {
+    if (typeof navigator === "undefined") return false;
+    return /iPad|iPhone|iPod/.test(navigator.userAgent);
   }
 
   const resultClass = useMemo(() => {
