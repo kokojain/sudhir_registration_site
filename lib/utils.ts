@@ -22,9 +22,12 @@ export function toStationKey(label: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-export function parseEligibleCell(value: unknown): boolean {
+export function parseEligibleCell(
+  value: unknown,
+  defaultWhenBlank = true,
+): boolean {
   const normalized = normalizeHeader(value);
-  if (!normalized) return false;
+  if (!normalized) return defaultWhenBlank;
   return !["NO", "N", "FALSE", "0", "NOT ELIGIBLE", "NA", "N/A"].includes(normalized);
 }
 

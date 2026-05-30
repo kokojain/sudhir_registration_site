@@ -6,6 +6,17 @@ const ID_HEADERS = ["DELEGATE ID", "ID", "QR ID", "QR CODE", "DELEGATE CODE"];
 const NAME_HEADERS = ["NAME", "FULL NAME", "DELEGATE NAME"];
 const MOBILE_HEADERS = ["MOBILE", "MOBILE NUMBER", "PHONE", "PHONE NUMBER"];
 const CATEGORY_HEADERS = ["CATEGORY", "TYPE", "GROUP"];
+const ELIGIBILITY_SUFFIX = " ELIGIBILITY";
+const STATUS_SUFFIX = " STATUS";
+const IGNORED_GENERIC_SUFFIXES = [
+  " TIME",
+  " USED AT",
+  " TIMESTAMP",
+  " REMARK",
+  " REMARKS",
+  " NOTE",
+  " NOTES",
+];
 
 type ParsedUpload = {
   delegateRows: Array<{
@@ -37,32 +48,11 @@ export function parseUploadRows(rows: unknown[][]): ParsedUpload {
   const categoryIndex = findIndex(headers, CATEGORY_HEADERS);
 
   const reserved = new Set<number>([delegateIdIndex, nameIndex, mobileIndex, categoryIndex].filter((x) => x >= 0));
-  const stationColumns = headers
-    .map((header, index) => ({ header, index }))
-    .filter((item) => item.header && !reserved.has(item.index))
-    .map((item) => ({
-      label: item.header,
-      stationKey: toStationKey(item.header),
-      index: item.index,
-    }))
-    .filter((item) => item.stationKey);
+  const stationColumns = selectStationColumns(headers, reserved);
 
   if (!stationColumns.length) {
     throw new Error("No station columns found. Add one or more station columns in Excel.");
   }
-
-  const keySeen = new Set<string>();
-  stationColumns.forEach((station) => {
-    const base = station.stationKey;
-    let final = base;
-    let i = 2;
-    while (keySeen.has(final)) {
-      final = `${base}_${i}`;
-      i += 1;
-    }
-    keySeen.add(final);
-    station.stationKey = final;
-  });
 
   const stations = stationColumns.map((item) => ({
     label: item.label,
@@ -81,15 +71,19 @@ export function parseUploadRows(rows: unknown[][]): ParsedUpload {
     const category = categoryIndex >= 0 ? String(row[categoryIndex] ?? "").trim() : "";
 
     const metadata: Record<string, string> = {};
+    const stationIndexSet = new Set(stationColumns.map((x) => x.index));
     headers.forEach((header, index) => {
-      if (!reserved.has(index) && !stationColumns.find((x) => x.index === index) && header) {
+      if (!reserved.has(index) && !stationIndexSet.has(index) && header) {
         metadata[header] = String(row[index] ?? "");
       }
     });
 
     const stationEligibility: Record<string, boolean> = {};
     stationColumns.forEach((station) => {
-      stationEligibility[station.stationKey] = parseEligibleCell(row[station.index]);
+      stationEligibility[station.stationKey] = parseEligibleCell(
+        row[station.index],
+        station.sourceType === "eligibility" ? false : true,
+      );
     });
 
     delegateRows.push({
@@ -107,6 +101,72 @@ export function parseUploadRows(rows: unknown[][]): ParsedUpload {
     stations,
     registrationStationKey,
   };
+}
+
+function selectStationColumns(headers: string[], reserved: Set<number>) {
+  const candidates = headers
+    .map((header, index) => ({
+      header: String(header || "").trim(),
+      normalized: normalizeHeader(header),
+      index,
+    }))
+    .filter((item) => item.header && !reserved.has(item.index));
+
+  const eligibilityColumns = candidates
+    .filter((item) => item.normalized.endsWith(ELIGIBILITY_SUFFIX))
+    .map((item) => ({
+      label: item.header.replace(/ Eligibility$/i, "").trim(),
+      stationKey: toStationKey(item.header.replace(/ Eligibility$/i, "").trim()),
+      index: item.index,
+      sourceType: "eligibility" as const,
+    }))
+    .filter((item) => item.stationKey);
+
+  if (eligibilityColumns.length) {
+    return ensureUniqueStationKeys(eligibilityColumns);
+  }
+
+  const statusColumns = candidates
+    .filter((item) => item.normalized.endsWith(STATUS_SUFFIX))
+    .map((item) => ({
+      label: item.header,
+      stationKey: toStationKey(item.header),
+      index: item.index,
+      sourceType: "status" as const,
+    }))
+    .filter((item) => item.stationKey);
+
+  if (statusColumns.length) {
+    return ensureUniqueStationKeys(statusColumns);
+  }
+
+  const genericColumns = candidates
+    .filter((item) => !IGNORED_GENERIC_SUFFIXES.some((suffix) => item.normalized.endsWith(suffix)))
+    .map((item) => ({
+      label: item.header,
+      stationKey: toStationKey(item.header),
+      index: item.index,
+      sourceType: "generic" as const,
+    }))
+    .filter((item) => item.stationKey);
+
+  return ensureUniqueStationKeys(genericColumns);
+}
+
+function ensureUniqueStationKeys<T extends { stationKey: string }>(columns: T[]) {
+  const keySeen = new Set<string>();
+  columns.forEach((column) => {
+    const base = column.stationKey;
+    let final = base;
+    let i = 2;
+    while (keySeen.has(final)) {
+      final = `${base}_${i}`;
+      i += 1;
+    }
+    keySeen.add(final);
+    column.stationKey = final;
+  });
+  return columns;
 }
 
 function findIndex(headers: string[], candidates: string[]) {
