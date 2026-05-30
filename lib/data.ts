@@ -112,24 +112,6 @@ function selectStationColumns(headers: string[], reserved: Set<number>) {
     }))
     .filter((item) => item.header && !reserved.has(item.index));
 
-  const eligibilityColumns = candidates
-    .filter((item) => item.normalized.endsWith(ELIGIBILITY_SUFFIX))
-    .map((item) => {
-      const baseLabel = item.header.replace(/ Eligibility$/i, "").trim();
-      return {
-        label: baseLabel,
-        stationKey: toStationKey(baseLabel),
-        index: item.index,
-        sourceType: "eligibility" as const,
-      };
-    })
-    .filter((item) => !isIgnoredStationBaseLabel(item.label))
-    .filter((item) => item.stationKey);
-
-  if (eligibilityColumns.length) {
-    return ensureUniqueStationKeys(eligibilityColumns);
-  }
-
   const statusColumns = candidates
     .filter((item) => item.normalized.endsWith(STATUS_SUFFIX))
     .map((item) => {
@@ -151,6 +133,24 @@ function selectStationColumns(headers: string[], reserved: Set<number>) {
 
   if (statusColumns.length) {
     return ensureUniqueStationKeys(statusColumns);
+  }
+
+  const eligibilityColumns = candidates
+    .filter((item) => item.normalized.endsWith(ELIGIBILITY_SUFFIX))
+    .map((item) => {
+      const baseLabel = item.header.replace(/ Eligibility$/i, "").trim();
+      return {
+        label: baseLabel,
+        stationKey: toStationKey(baseLabel),
+        index: item.index,
+        sourceType: "eligibility" as const,
+      };
+    })
+    .filter((item) => !isIgnoredStationBaseLabel(item.label))
+    .filter((item) => item.stationKey);
+
+  if (eligibilityColumns.length) {
+    return ensureUniqueStationKeys(eligibilityColumns);
   }
 
   const genericColumns = candidates
