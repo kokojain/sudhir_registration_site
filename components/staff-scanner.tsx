@@ -134,6 +134,7 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
               10000,
             );
             setIsRunning(true);
+            await ensurePreviewVisible("reader");
             return;
           } catch {
             await sleep(250);
@@ -307,6 +308,46 @@ export function StaffScanner({ stationToken, stationLabel, initialStats }: Staff
           reject(error);
         });
     });
+  }
+
+  async function ensurePreviewVisible(containerId: string) {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const applyPreviewFixes = async () => {
+      const scannerRegion = container.querySelector("div");
+      if (scannerRegion instanceof HTMLElement) {
+        scannerRegion.style.width = "100%";
+        scannerRegion.style.height = "100%";
+      }
+
+      const video = container.querySelector("video");
+      if (!(video instanceof HTMLVideoElement)) return;
+
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.setAttribute("muted", "true");
+      video.setAttribute("autoplay", "true");
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      video.style.width = "100%";
+      video.style.height = "100%";
+      video.style.objectFit = "cover";
+
+      try {
+        await video.play();
+      } catch {
+        // Ignore autoplay errors; next interaction can resume playback.
+      }
+    };
+
+    await applyPreviewFixes();
+    await sleep(60);
+    await applyPreviewFixes();
+    await sleep(250);
+    await applyPreviewFixes();
   }
 
   const resultClass = useMemo(() => {
