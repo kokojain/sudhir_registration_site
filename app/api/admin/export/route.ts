@@ -49,19 +49,58 @@ export async function GET() {
     statusMap.set(`${row.delegate_id}:${row.station_id}`, row);
   });
 
+  const statusHeaders = stations.map((station) =>
+    / status$/i.test(station.label) ? station.label : `${station.label} Status`,
+  );
+  const timeHeaders = statusHeaders.map((header) => header.replace(/ status$/i, " Time"));
+
+  const metadataHeaders: string[] = [];
+  const seenMetadataHeaders = new Set<string>();
+  delegates.forEach((delegate) => {
+    const metadata = (delegate.metadata ?? {}) as Record<string, string>;
+    Object.keys(metadata).forEach((key) => {
+      const normalized = key.trim();
+      if (!normalized) return;
+      if (seenMetadataHeaders.has(normalized)) return;
+      seenMetadataHeaders.add(normalized);
+      metadataHeaders.push(normalized);
+    });
+  });
+
+  const reservedHeaders = new Set([
+    "Delegate ID",
+    "Name",
+    "Category",
+    "Mobile",
+    ...statusHeaders,
+    ...timeHeaders,
+  ]);
+  const filteredMetadataHeaders = metadataHeaders.filter((header) => !reservedHeaders.has(header));
+
   const delegatesSheetRows = delegates.map((delegate) => {
     const row: Record<string, string> = {
       "Delegate ID": delegate.delegate_id,
       Name: delegate.full_name ?? "",
-      Mobile: delegate.mobile ?? "",
       Category: delegate.category ?? "",
     };
 
-    stations.forEach((station) => {
+    stations.forEach((station, index) => {
       const status = statusMap.get(`${delegate.id}:${station.id}`);
-      row[`${station.label} Eligibility`] = status?.eligible ? "YES" : "NO";
-      row[`${station.label} Status`] = status?.status ?? "";
-      row[`${station.label} Used At`] = status?.used_at ?? "";
+      row[statusHeaders[index]] = status?.status ?? "";
+    });
+
+    row.Mobile = delegate.mobile ?? "";
+
+    stations.forEach((station, index) => {
+      const status = statusMap.get(`${delegate.id}:${station.id}`);
+      row[timeHeaders[index]] = status?.used_at
+        ? new Date(status.used_at).toLocaleString()
+        : "";
+    });
+
+    const metadata = (delegate.metadata ?? {}) as Record<string, string>;
+    filteredMetadataHeaders.forEach((header) => {
+      row[header] = metadata[header] ?? "";
     });
     return row;
   });

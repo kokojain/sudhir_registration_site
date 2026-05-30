@@ -114,12 +114,16 @@ function selectStationColumns(headers: string[], reserved: Set<number>) {
 
   const eligibilityColumns = candidates
     .filter((item) => item.normalized.endsWith(ELIGIBILITY_SUFFIX))
-    .map((item) => ({
-      label: item.header.replace(/ Eligibility$/i, "").trim(),
-      stationKey: toStationKey(item.header.replace(/ Eligibility$/i, "").trim()),
-      index: item.index,
-      sourceType: "eligibility" as const,
-    }))
+    .map((item) => {
+      const baseLabel = item.header.replace(/ Eligibility$/i, "").trim();
+      return {
+        label: baseLabel,
+        stationKey: toStationKey(baseLabel),
+        index: item.index,
+        sourceType: "eligibility" as const,
+      };
+    })
+    .filter((item) => !isIgnoredStationBaseLabel(item.label))
     .filter((item) => item.stationKey);
 
   if (eligibilityColumns.length) {
@@ -128,12 +132,21 @@ function selectStationColumns(headers: string[], reserved: Set<number>) {
 
   const statusColumns = candidates
     .filter((item) => item.normalized.endsWith(STATUS_SUFFIX))
-    .map((item) => ({
-      label: item.header,
-      stationKey: toStationKey(item.header),
-      index: item.index,
-      sourceType: "status" as const,
-    }))
+    .map((item) => {
+      const baseLabel = item.header.replace(/ Status$/i, "").trim();
+      const baseNormalized = normalizeHeader(baseLabel);
+      const normalizedLabel = baseNormalized.endsWith(STATUS_SUFFIX)
+        ? baseLabel
+        : item.header;
+      return {
+        label: normalizedLabel,
+        stationKey: toStationKey(normalizedLabel),
+        index: item.index,
+        sourceType: "status" as const,
+        baseLabel,
+      };
+    })
+    .filter((item) => !isIgnoredStationBaseLabel(item.baseLabel))
     .filter((item) => item.stationKey);
 
   if (statusColumns.length) {
@@ -141,7 +154,7 @@ function selectStationColumns(headers: string[], reserved: Set<number>) {
   }
 
   const genericColumns = candidates
-    .filter((item) => !IGNORED_GENERIC_SUFFIXES.some((suffix) => item.normalized.endsWith(suffix)))
+    .filter((item) => !isIgnoredStationBaseLabel(item.header))
     .map((item) => ({
       label: item.header,
       stationKey: toStationKey(item.header),
@@ -151,6 +164,11 @@ function selectStationColumns(headers: string[], reserved: Set<number>) {
     .filter((item) => item.stationKey);
 
   return ensureUniqueStationKeys(genericColumns);
+}
+
+function isIgnoredStationBaseLabel(label: string) {
+  const normalized = normalizeHeader(label);
+  return IGNORED_GENERIC_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
 }
 
 function ensureUniqueStationKeys<T extends { stationKey: string }>(columns: T[]) {
