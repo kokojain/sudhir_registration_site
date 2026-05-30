@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
-import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { getAdminSupabaseClient } from "@/lib/supabase/admin";
+import { requireApiUser } from "@/lib/api-auth";
 
-export async function POST() {
-  const supabase = await getServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function POST(request: Request) {
+  const auth = await requireApiUser(request);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
 
   const admin = getAdminSupabaseClient();
   const { data: existing } = await admin
@@ -45,7 +40,7 @@ export async function POST() {
       id: user.id,
       organization_id: firstOrg.id,
       role,
-      full_name: user.user_metadata?.full_name ?? user.email ?? null,
+      full_name: user.fullName ?? user.email ?? null,
     })
     .select("id,role,organization_id")
     .single();

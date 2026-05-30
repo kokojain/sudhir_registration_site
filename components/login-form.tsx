@@ -25,11 +25,19 @@ export function LoginForm() {
         setMessage(signInResult.error.message);
         return;
       }
+      const accessToken = signInResult.data.session?.access_token;
+      if (!accessToken) {
+        setMessage("Login succeeded but no session token was returned.");
+        return;
+      }
 
       const bootstrapController = new AbortController();
       const bootstrap = await withTimeout(
         fetch("/api/auth/bootstrap-profile", {
           method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
           signal: bootstrapController.signal,
         }),
         15000,

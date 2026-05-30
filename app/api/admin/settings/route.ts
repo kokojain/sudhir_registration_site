@@ -10,7 +10,7 @@ const schema = z.object({
 });
 
 export async function PATCH(request: Request) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiAdmin(request);
   if ("error" in auth) return auth.error;
 
   const body = await request.json();

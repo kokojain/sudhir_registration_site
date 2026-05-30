@@ -4,8 +4,8 @@ import { requireApiAdmin } from "@/lib/api-auth";
 import { getAdminSupabaseClient } from "@/lib/supabase/admin";
 import { getActiveDataset } from "@/lib/data";
 
-export async function GET() {
-  const auth = await requireApiAdmin();
+export async function GET(request: Request) {
+  const auth = await requireApiAdmin(request);
   if ("error" in auth) return auth.error;
 
   const dataset = await getActiveDataset(auth.user.organizationId);

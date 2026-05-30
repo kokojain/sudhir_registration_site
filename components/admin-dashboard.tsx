@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
 
@@ -37,10 +37,43 @@ export function AdminDashboard({ initialState }: { initialState: AdminStateRespo
     [state.stationLinks],
   );
 
+  const getAuthHeaders = useCallback(async () => {
+    const supabase = getBrowserSupabaseClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+    return {
+      Authorization: `Bearer ${session.access_token}`,
+    };
+  }, []);
+
+  const authedFetch = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const authHeaders = await getAuthHeaders();
+      const headers = new Headers(init?.headers || {});
+      Object.entries(authHeaders).forEach(([key, value]) => headers.set(key, value));
+      return fetch(input, {
+        ...init,
+        headers,
+      });
+    },
+    [getAuthHeaders],
+  );
+
   const refreshState = useCallback(async () => {
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/admin/state");
+    let response: Response;
+    try {
+      response = await authedFetch("/api/admin/state");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication required.");
+      setBusy(false);
+      return;
+    }
     const body = (await response.json()) as AdminStateResponse | { error?: string };
     if (!response.ok) {
       setMessage((body as { error?: string }).error ?? "Failed to fetch admin state.");
@@ -52,7 +85,14 @@ export function AdminDashboard({ initialState }: { initialState: AdminStateRespo
     setRegistrationFirst(next.dataset?.require_registration_first ?? true);
     setRegistrationStationId(next.dataset?.registration_station_id ?? "");
     setBusy(false);
-  }, []);
+  }, [authedFetch]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void refreshState();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [refreshState]);
 
   async function uploadDataset(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,10 +107,17 @@ export function AdminDashboard({ initialState }: { initialState: AdminStateRespo
     setMessage("Uploading and processing dataset...");
     const form = new FormData();
     form.set("file", file);
-    const response = await fetch("/api/admin/dataset/upload", {
-      method: "POST",
-      body: form,
-    });
+    let response: Response;
+    try {
+      response = await authedFetch("/api/admin/dataset/upload", {
+        method: "POST",
+        body: form,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication required.");
+      setBusy(false);
+      return;
+    }
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     if (!response.ok) {
       setMessage(body.error ?? "Dataset upload failed.");
@@ -87,16 +134,23 @@ export function AdminDashboard({ initialState }: { initialState: AdminStateRespo
   async function saveSettings() {
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        requireRegistrationFirst: registrationFirst,
-        registrationStationId: registrationStationId || null,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await authedFetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requireRegistrationFirst: registrationFirst,
+          registrationStationId: registrationStationId || null,
+        }),
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication required.");
+      setBusy(false);
+      return;
+    }
 
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     if (!response.ok) {
@@ -115,6 +169,28 @@ export function AdminDashboard({ initialState }: { initialState: AdminStateRespo
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  }
+
+  async function downloadExport() {
+    try {
+      const response = await authedFetch("/api/admin/export");
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setMessage(body.error ?? "Failed to download export.");
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "dataset_export.xlsx";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication required.");
+    }
   }
 
   return (
@@ -166,12 +242,13 @@ export function AdminDashboard({ initialState }: { initialState: AdminStateRespo
               >
                 Refresh
               </button>
-              <a
-                href="/api/admin/export"
+              <button
+                type="button"
+                onClick={() => void downloadExport()}
                 className="rounded-md border border-emerald-300 px-4 py-2 text-emerald-700 hover:bg-emerald-50"
               >
                 Download Excel
-              </a>
+              </button>
             </div>
           </form>
         </div>

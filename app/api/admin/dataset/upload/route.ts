@@ -4,7 +4,7 @@ import { requireApiAdmin } from "@/lib/api-auth";
 import { createDatasetFromUpload } from "@/lib/data";
 
 export async function POST(request: Request) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiAdmin(request);
   if ("error" in auth) return auth.error;
 
   const formData = await request.formData();
