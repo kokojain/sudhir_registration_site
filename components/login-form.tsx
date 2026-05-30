@@ -15,25 +15,65 @@ export function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setMessage("");
+    try {
+      const supabase = getBrowserSupabaseClient();
+      const signInResult = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        15000,
+      );
+      if (signInResult.error) {
+        setMessage(signInResult.error.message);
+        return;
+      }
 
-    const supabase = getBrowserSupabaseClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setMessage(error.message);
+      const bootstrapController = new AbortController();
+      const bootstrap = await withTimeout(
+        fetch("/api/auth/bootstrap-profile", {
+          method: "POST",
+          signal: bootstrapController.signal,
+        }),
+        15000,
+        () => bootstrapController.abort(),
+      );
+
+      if (!bootstrap.ok) {
+        const body = (await bootstrap.json().catch(() => ({}))) as { error?: string };
+        setMessage(body.error ?? "Could not initialize profile.");
+        return;
+      }
+
+      router.push("/admin");
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Login failed due to network/server issue.";
+      setMessage(message);
+    } finally {
       setLoading(false);
-      return;
     }
+  }
 
-    const bootstrap = await fetch("/api/auth/bootstrap-profile", { method: "POST" });
-    if (!bootstrap.ok) {
-      const body = (await bootstrap.json().catch(() => ({}))) as { error?: string };
-      setMessage(body.error ?? "Could not initialize profile.");
-      setLoading(false);
-      return;
-    }
+  function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    onTimeout?: () => void,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        onTimeout?.();
+        reject(new Error("Request timed out. Please try again."));
+      }, timeoutMs);
 
-    router.push("/admin");
-    router.refresh();
+      promise
+        .then((value) => {
+          clearTimeout(timer);
+          resolve(value);
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+    });
   }
 
   return (
