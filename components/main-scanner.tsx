@@ -38,6 +38,7 @@ const INITIAL_RESULT: ScanResult = {
 
 export function MainScanner() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [stations, setStations] = useState<Station[]>([]);
   const [datasetName, setDatasetName] = useState("");
   const [selectedToken, setSelectedToken] = useState("");
@@ -262,6 +263,47 @@ export function MainScanner() {
     void refreshStats();
   }
 
+  function openPhotoPicker() {
+    photoInputRef.current?.click();
+  }
+
+  async function onPhotoSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || busy) return;
+    setBusy(true);
+    try {
+      const { Html5Qrcode: QrScanner } = await import("html5-qrcode");
+      const qr = new QrScanner("main-reader");
+      const decoded = await qr.scanFile(file, true);
+      await submitScan(decoded);
+    } catch (error) {
+      setResult({
+        status: "ERROR",
+        message:
+          error instanceof Error
+            ? `Could not read QR from photo: ${error.message}`
+            : "Could not read QR from photo.",
+        delegateId: "",
+        name: "",
+        category: "",
+        timestamp: new Date().toISOString(),
+      });
+      setBusy(false);
+    } finally {
+      if (event.target) event.target.value = "";
+    }
+  }
+
+  async function testCameraAccess() {
+    try {
+      await requestCameraPermissionPreflight();
+      setMessage("Camera permission looks OK. If stream still fails, try Refresh cameras or Scan from Photo.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessage(`Camera test failed: ${detail}`);
+    }
+  }
+
   function submitManual() {
     if (!manualId.trim() || busy) return;
     setBusy(true);
@@ -473,7 +515,29 @@ export function MainScanner() {
             >
               Scan next
             </button>
+            <button
+              type="button"
+              onClick={openPhotoPicker}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+            >
+              Scan from photo
+            </button>
+            <button
+              type="button"
+              onClick={() => void testCameraAccess()}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+            >
+              Camera test
+            </button>
           </div>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(event) => void onPhotoSelected(event)}
+          />
 
           <label className="mt-4 block text-sm font-medium text-slate-700">
             Manual delegate ID
